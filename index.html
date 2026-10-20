@@ -35,7 +35,6 @@
       overflow-x: hidden;
       position: relative;
     }
-
     .orb {
       position: fixed;
       border-radius: 50%;
@@ -70,8 +69,7 @@
       align-items: center;
       justify-content: space-between;
       margin-bottom: 14px;
-    }
-
+        }
     .admin-btn {
       width: 38px;
       height: 38px;
@@ -129,8 +127,7 @@
       justify-content: space-between;
       align-items: center;
       text-decoration: none;
-    }
-
+      }
     .glass-pill:active, .glass-pill:hover {
       background: var(--glass-highlight);
     }
@@ -193,7 +190,6 @@
       height: 100%;
       cursor: pointer;
     }
-
     .submit-pill {
       margin-top: 8px;
       text-align: center;
@@ -295,6 +291,31 @@
     }
 
     .zoom-btn:active { background: rgba(56, 189, 248, 0.35); }
+
+    #view-pdf.pdf-fullscreen {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      width: 100vw;
+      height: 100%;
+      height: 100dvh;
+      padding: calc(env(safe-area-inset-top, 0px) + 6px) 6px calc(env(safe-area-inset-bottom, 0px) + 6px);
+      background: radial-gradient(circle at 15% 20%, #1e1b4b, #0f172a 55%, #020617);
+      overflow: hidden;
+  }
+   #view-pdf.pdf-fullscreen #selectedChapterBanner { flex-shrink: 0; padding: 6px 12px !important; }
+
+    #view-pdf.pdf-fullscreen .pdf-container {
+      flex: 1;
+      min-height: 0;
+      height: auto;
+      margin-top: 6px;
+      border-radius: 12px;
+    }
+
+    #view-pdf.pdf-fullscreen .zoom-bar { flex-shrink: 0; margin-top: 6px; }
 
     .pdf-page {
       display: block;
@@ -445,6 +466,7 @@
           <button class="zoom-btn" onclick="setPdfZoom(pdfZoom / 1.25)" aria-label="Zoom out">−</button>
           <button class="zoom-btn" id="zoomLabel" onclick="setPdfZoom(1)" aria-label="Reset zoom">100%</button>
           <button class="zoom-btn" onclick="setPdfZoom(pdfZoom * 1.25)" aria-label="Zoom in">+</button>
+          <button class="zoom-btn" id="fsBtn" onclick="togglePdfFullscreen()" aria-label="Toggle full screen">⛶</button>
         </div>
       </div>
 
@@ -482,8 +504,7 @@
           </button>
         </div>
       </div>
-
-      <!-- ADMIN VIEW 2: ADD NEW COURSE -->
+  <!-- ADMIN VIEW 2: ADD NEW COURSE -->
       <div id="view-add-course" class="view-section hidden">
         <div class="pill-list">
           <input type="text" id="newCourseName" class="glass-input" placeholder="Course name" />
@@ -543,7 +564,6 @@
         ]
       }
     ];
-
     let currentCourseIndex = 0;
     let currentChapterIndex = 0;
     let isAdminAuthenticated = false;
@@ -632,9 +652,8 @@
         statusEl.style.color = 'var(--danger)';
         statusEl.textContent = "Password needs 8+ chars, upper, lower, number & symbol.";
         return;
-      }
-
-      const inputHash = await computeHash(`${user}:${pass}:${pin}`);
+    }
+    const inputHash = await computeHash(`${user}:${pass}:${pin}`);
       const targetHash = await computeHash("admin:Miles@2026!:3690");
 
       if (inputHash === targetHash) {
@@ -682,6 +701,7 @@
     };
 
     function showView(viewId) {
+      if (viewId !== 'view-pdf') exitPdfFullscreen();
       document.querySelectorAll('.view-section').forEach(el => el.classList.add('hidden'));
       document.getElementById(viewId).classList.remove('hidden');
       document.getElementById('screenTitle').textContent = viewTitles[viewId] || 'Portal';
@@ -704,6 +724,7 @@
     }
 
     function goBack() {
+      if (isPdfFullscreen()) { exitPdfFullscreen(); return; }
       if (historyPointer > 0) {
         historyPointer--;
         showView(historyStack[historyPointer]);
@@ -751,7 +772,6 @@
         container.appendChild(row);
       });
     }
-
     function selectCourse(index) {
       if (!coursesData[index]) return;
       currentCourseIndex = index;
@@ -802,7 +822,6 @@
         list.appendChild(row);
       });
     }
-
     function confirmDeleteCourse(courseIdx) {
       const course = coursesData[courseIdx];
       if (!course) return;
@@ -908,6 +927,56 @@
 
       window.addEventListener('resize', () => setPdfZoom(pdfZoom));
     })();
+    // ---- Full screen ----
+    let pdfFsPlaceholder = null;
+
+    function isPdfFullscreen() {
+      return document.getElementById('view-pdf').classList.contains('pdf-fullscreen');
+    }
+
+    function enterPdfFullscreen() {
+      const v = document.getElementById('view-pdf');
+      if (isPdfFullscreen()) return;
+      // Move to <body> so position:fixed isn't trapped by a parent's blur/transform
+      pdfFsPlaceholder = document.createComment('pdf-view');
+      v.parentNode.insertBefore(pdfFsPlaceholder, v);
+      document.body.appendChild(v);
+      v.classList.add('pdf-fullscreen');
+      document.getElementById('fsBtn').textContent = '✕';
+      // Real fullscreen where supported (not iPhone Safari); CSS overlay is the fallback
+      const req = v.requestFullscreen || v.webkitRequestFullscreen;
+      if (req) { try { const p = req.call(v); if (p && p.catch) p.catch(() => {}); } catch (e) {} }
+      setTimeout(() => setPdfZoom(pdfZoom), 50);
+    }
+
+    function exitPdfFullscreen() {
+      const v = document.getElementById('view-pdf');
+      if (!isPdfFullscreen()) return;
+      v.classList.remove('pdf-fullscreen');
+      if (pdfFsPlaceholder && pdfFsPlaceholder.parentNode) {
+        pdfFsPlaceholder.parentNode.insertBefore(v, pdfFsPlaceholder);
+        pdfFsPlaceholder.remove();
+      }
+      pdfFsPlaceholder = null;
+      document.getElementById('fsBtn').textContent = '⛶';
+      const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+      if (fsEl) {
+        const ex = document.exitFullscreen || document.webkitExitFullscreen;
+        try { const p = ex.call(document); if (p && p.catch) p.catch(() => {}); } catch (e) {}
+      }
+      setTimeout(() => setPdfZoom(pdfZoom), 50);
+    }
+
+    function togglePdfFullscreen() {
+      isPdfFullscreen() ? exitPdfFullscreen() : enterPdfFullscreen();
+    }
+
+    // Leaving native fullscreen with Esc / system gesture also closes the overlay
+    ['fullscreenchange', 'webkitfullscreenchange'].forEach(ev =>
+      document.addEventListener(ev, () => {
+        if (!(document.fullscreenElement || document.webkitFullscreenElement)) exitPdfFullscreen();
+      }));
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') exitPdfFullscreen(); });
 
     let pdfRenderToken = 0;
 
@@ -960,7 +1029,6 @@
         showMsg('Could not display this PDF.<br><a class="pdf-open-link" href="' + chapter.pdfUrl + '" target="_blank" rel="noopener">Open PDF in new tab</a>');
       }
     }
-
     function selectChapter(chapterIdx) {
       currentChapterIndex = chapterIdx;
       const course = coursesData[currentCourseIndex];
